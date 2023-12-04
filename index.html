@@ -1,0 +1,505 @@
+<!-- Written by Ricardo Waibel; ITP and HEGL, Heidelberg -->
+
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<title>Rectangle to Torus</title>
+		<link type="text/css" rel="stylesheet" href="main.css">
+		<style>
+			.label {
+				color: #FFF;
+				font-family: sans-serif;
+				/* padding: 2px; */
+				background: rgba(0, 0, 0, 0);
+			}
+
+			.author {
+				position: fixed;
+				bottom: 15px;
+				right: 30px;
+				/* transform: translate(-50%, -50%); */
+				font-size: 0.8vw;
+				font-family: 'Oswald', sans-serif;
+				color: white;
+				text-align: right;
+				z-index: 100;
+			}
+
+		</style>
+	</head>
+	<body>
+
+		<!-- Import maps polyfill -->
+		<!-- Remove this when import maps will be widely supported -->
+		<script async src="https://unpkg.com/es-module-shims@1.3.6/dist/es-module-shims.js"></script>
+
+		<script type="importmap">
+			{
+				"imports": {
+					"three": "./js/three.module.js",
+					"three/addons/": "./js/jsm/"
+				}
+			}
+		</script>
+
+		<script type="module">
+
+			import * as THREE from 'three';
+			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+			import { ParametricGeometry } from './js/jsm/geometries/ParametricGeometry.js';
+			import Stats from './js/jsm/libs/stats.module.js';
+			import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
+
+			const textureLoader = new THREE.TextureLoader();
+
+			const board_texture_material = new THREE.MeshPhongMaterial({
+				shininess: 2,
+				map: textureLoader.load('./board-texture2.png'),
+				side: THREE.DoubleSide
+			});
+
+			let gui;
+			let stats;
+			let camera, scene, renderer;
+
+			let torus;
+			let sphere;
+			let eye1, eye2;
+			let mouth1, mouth2;
+			let sphere_group;
+			let stdAxisRight, stdAxisUp;
+
+			let curr_torus = 0.0;
+			let curr_torus_size = 0.0;
+			let curr_torus_size_tube = 0.0;
+			let curr_pos_sphere_1 = 0.0;
+			let curr_pos_sphere_2 = 0.0;
+			let switch_bool_sphere_group = true;
+			let switch_bool_moving_dir_2 = false;
+			let switch_bool_move_sphere = true;
+			let switch_bool_move_dir_pos = true;
+
+			const patch_size_x = 4;
+			const patch_size_y = 2;
+			const min_torus_size = 0.5 * patch_size_x;
+			const max_torus_size = 600;
+			const min_torus_size_tube = 0.5 * patch_size_y;
+			const max_torus_size_tube = 300;
+
+			const sphere_max_opening_angle = Math.PI / 2.0;
+			const sphere_size = 0.3;
+			const sphere_eye_size = 0.05;
+			const sphere_eye_pos_angle_1 = 0.2 * Math.PI;
+			const sphere_eye_pos_angle_2 = -0.1 * Math.PI;
+
+			const max_pos_sphere_1 = 4.0;
+			const max_pos_sphere_2 = 4.0;
+			const pos_sphere_slider_spacing = 0.005;
+
+			const colour_white = 0xFFFFFF;
+			const colour_yellow = 0xFFFF00;
+			const colour_blue = 0x0000FF;
+			const colour_red = 0xFF0000;
+			const colour_blue_gray = 0x51667a;
+			const colour_black = 0x000000;
+
+			init();
+			animate();
+
+			function init() {
+				camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 200);
+				camera.position.set(20, 5, 10);
+				camera.layers.enableAll();
+
+				// stats about fps on the website (frames-per-second)
+				stats = Stats();
+				document.body.appendChild( stats.dom );
+
+				scene = new THREE.Scene();
+
+				const dirLight = new THREE.DirectionalLight( 0xffffff );
+				dirLight.position.set( 0, 1, 1 );
+				dirLight.layers.enableAll();
+				scene.add( dirLight );
+
+				const intensity = 1;
+				const light_amb = new THREE.AmbientLight(colour_white, intensity);
+				light_amb.layers.enableAll();
+				scene.add(light_amb);
+
+				const axesHelper = new THREE.AxesHelper(5);
+				axesHelper.layers.set(1);
+				scene.add(axesHelper);
+				camera.layers.toggle(1);
+
+				renderer = new THREE.WebGLRenderer({antialias: true});
+				renderer.setPixelRatio(window.devicePixelRatio);
+				renderer.setSize(window.innerWidth, window.innerHeight);
+				const lovely_blue_bg = 0x605AE8;
+				const lovely_sand_gold_bg = 0xFFD700;
+				// const lovely_sand_gold_bg_2 = 0xC2B280;
+				const lovely_sand_gold_bg_3 = 0xD4AF37;
+				const lovely_lime_green_bg = 0x32CD32;
+				// const lovely_lime_green_bg_2 = 0xCEFA05;
+				renderer.setClearColor(lovely_lime_green_bg);
+				document.body.appendChild(renderer.domElement);
+
+				const controls = new OrbitControls(camera, renderer.domElement);
+				controls.minDistance = 5;
+				controls.maxDistance = 100;
+
+				// Add Window-Resizer
+				window.addEventListener('resize', onWindowResize);
+
+				initGui();
+				initTorus(max_torus_size, max_torus_size_tube);
+				initSphereGroup();
+
+				// Define standard orientation axis
+				// Use max torus size, instead of current one, should be roughly the same for the zero point
+				let u_delta = Math.PI * patch_size_x / max_torus_size; // 2pi u 2r = patch_size_x
+				let v_delta = Math.PI * patch_size_y / max_torus_size_tube; // 2pi v 2r = patch_size_y
+
+				const x = min_torus_size_tube + min_torus_size;
+				const y = 0.0;
+				const z = 0.0;
+				const x_right_after = (max_torus_size + max_torus_size_tube) * Math.cos(pos_sphere_slider_spacing * u_delta) - max_torus_size - max_torus_size_tube + min_torus_size_tube + min_torus_size;// + sphere_size * Math.cos(pos_sphere_slider_spacing * u_delta);
+				const y_right_after = 0.0;
+				const z_right_after = (max_torus_size + max_torus_size_tube) * Math.sin(pos_sphere_slider_spacing * u_delta);// + sphere_size * Math.sin(pos_sphere_slider_spacing * u_delta);
+
+				stdAxisRight = new THREE.Vector3(x_right_after - x, y_right_after - y, z_right_after - z);
+				stdAxisRight.normalize();
+
+				const x_up_after = (max_torus_size + max_torus_size_tube * Math.cos(pos_sphere_slider_spacing * v_delta)) - max_torus_size - max_torus_size_tube + min_torus_size_tube + min_torus_size; //+ sphere_size * Math.cos(pos_sphere_slider_spacing * v_delta);
+				const y_up_after = max_torus_size_tube * Math.sin(pos_sphere_slider_spacing * v_delta);// + sphere_size * Math.sin(pos_sphere_slider_spacing * v_delta);
+				const z_up_after = 0.0;
+
+				stdAxisUp = new THREE.Vector3(x_up_after - x, y_up_after - y, z_up_after - z);
+				stdAxisUp.normalize();
+			}
+
+			// Initialize the torus, just showing a patch
+			function initTorus(this_r, this_r_tube) {
+				curr_torus_size = this_r;
+				curr_torus_size_tube = this_r_tube;
+
+				const mesh_fun_torus = function(u, v, target) {
+
+					let u_delta = Math.PI * patch_size_x / this_r; // 2pi u 2r = patch_size_x
+					let v_delta = Math.PI * patch_size_y / this_r_tube; // 2pi v 2r = patch_size_y
+
+	                const x = (this_r + this_r_tube * Math.cos(-0.5 * v_delta + v * v_delta)) * Math.cos(-0.5 * u_delta + u * u_delta) - this_r - this_r_tube + min_torus_size_tube + min_torus_size;
+					const y = this_r_tube * Math.sin(-0.5 * v_delta + v * v_delta);
+					const z = (this_r + this_r_tube * Math.cos(-0.5 * v_delta + v * v_delta)) * Math.sin(-0.5 * u_delta + u * u_delta);
+
+				    target.set(x, y, z);
+	            };
+
+				// const this_material2 = new THREE.MeshPhysicalMaterial( { color: colour_blue_gray, metalness: 0.5, roughness: 0.1, clearcoat: 1.0, side: THREE.DoubleSide } );
+
+				const torus_geo = new ParametricGeometry(mesh_fun_torus, 40, 40);
+
+				torus = new THREE.Mesh(torus_geo, board_texture_material);
+	            scene.add(torus);
+
+				torus.layers.enableAll();
+			}
+
+			// Initialize sphere grooup
+			function initSphereGroup() {
+				const sphere_geometry = new THREE.SphereGeometry(sphere_size, 20, 20, 0.5 * sphere_max_opening_angle, 2.0 * Math.PI - sphere_max_opening_angle, 0.0, Math.PI);
+				const eye_geometry = new THREE.SphereGeometry(sphere_eye_size, 15, 15);
+				const mouth_geometry = new THREE.CircleGeometry(sphere_size, 20, 0.0, Math.PI);
+
+				const this_material_yellow = new THREE.MeshPhysicalMaterial( { color: colour_yellow, metalness: 0.5, roughness: 0.1, clearcoat: 1.0, side: THREE.DoubleSide } );
+				const this_material_black = new THREE.MeshPhysicalMaterial( { color: colour_black, metalness: 0.5, roughness: 0.1, clearcoat: 1.0, side: THREE.DoubleSide } );
+				const this_material_red = new THREE.MeshPhysicalMaterial( { color: colour_red, metalness: 0.5, roughness: 0.1, clearcoat: 1.0, side: THREE.DoubleSide } );
+
+
+				sphere = new THREE.Mesh(sphere_geometry, this_material_yellow);
+				eye1 = new THREE.Mesh(eye_geometry, this_material_black);
+				eye2 = new THREE.Mesh(eye_geometry, this_material_black);
+				mouth1 = new THREE.Mesh(mouth_geometry, this_material_red);
+				mouth2 = new THREE.Mesh(mouth_geometry, this_material_red);
+
+				// Put and rotate into correct position
+				sphere.rotateX(Math.PI / 2.0);
+				sphere.rotateZ(Math.PI / 2.0);
+
+				mouth1.rotateX(1.5 * Math.PI + 0.5 * sphere_max_opening_angle);
+				mouth2.rotateX(1.5 * Math.PI - 0.5 * sphere_max_opening_angle);
+
+				eye1.position.set(sphere_size * Math.sin(sphere_eye_pos_angle_1) * Math.cos(sphere_eye_pos_angle_2), sphere_size * Math.cos(sphere_eye_pos_angle_1), sphere_size * Math.sin(sphere_eye_pos_angle_1) * Math.sin(sphere_eye_pos_angle_2));
+				eye2.position.set(sphere_size * Math.sin(-sphere_eye_pos_angle_1) * Math.cos(-sphere_eye_pos_angle_2), sphere_size * Math.cos(-sphere_eye_pos_angle_1), sphere_size * Math.sin(-sphere_eye_pos_angle_1) * Math.sin(-sphere_eye_pos_angle_2));
+
+				// Groupt those together
+				sphere_group = new THREE.Group();
+				sphere.layers.set(2);
+				mouth1.layers.set(2);
+				mouth2.layers.set(2);
+				eye1.layers.set(2);
+				eye2.layers.set(2);
+				sphere_group.add(sphere);
+				sphere_group.add(mouth1);
+				sphere_group.add(mouth2);
+				sphere_group.add(eye1);
+				sphere_group.add(eye2);
+
+				sphere_group.layers.set(2);
+				scene.add(sphere_group);
+
+				sphere_group.translateX(min_torus_size_tube + min_torus_size);// + sphere_size);
+			}
+
+			// Function to resize inner window in case it is necessary
+			function onWindowResize() {
+				camera.aspect = window.innerWidth / window.innerHeight;
+				camera.updateProjectionMatrix();
+				renderer.setSize(window.innerWidth, window.innerHeight);
+			}
+
+			// Main function that controls the animation
+			function animate() {
+				requestAnimationFrame(animate);
+
+				// Render the scene
+				renderer.render(scene, camera);
+				stats.update()
+			}
+
+			// Remove torus from scene
+			function disposeTorus() {
+				torus.geometry.dispose();
+				torus.material.dispose();
+				scene.remove(torus);
+			}
+
+			function initGui() {
+				gui = new GUI();
+
+				const deform_param = {
+					torus: curr_torus,
+					pos1: curr_pos_sphere_1,
+					pos2: curr_pos_sphere_2
+				};
+
+				const obj_param = {
+					'Toggle Sphere': function () {
+						if (switch_bool_sphere_group == false) {
+							switch_bool_sphere_group = true;
+						} else {
+							switch_bool_sphere_group = false;
+						}
+						camera.layers.toggle(2);
+					},
+					'Toggle Axes': function () {
+						camera.layers.toggle(1);
+					}
+				};
+
+				const obj_folder = gui.addFolder('Objects');
+				const deform_folder = gui.addFolder('Interactions');
+
+				obj_folder.add(obj_param, 'Toggle Sphere').name('Toggle Sphere');
+				obj_folder.add(obj_param, 'Toggle Axes').name('Toggle Axes');
+
+				deform_folder.add(deform_param, 'torus', 0.0, 1.0, 0.01).name('Deform')
+				.setValue(curr_torus)
+        		.onChange(onChangeTorus);
+
+				deform_folder.add(deform_param, 'pos1', 0.0, max_pos_sphere_1, pos_sphere_slider_spacing).name('Move Left/Right')
+				.setValue(curr_pos_sphere_1)
+        		.onChange(onChangeSpherePos1);
+
+				deform_folder.add(deform_param, 'pos2', 0.0, max_pos_sphere_2, pos_sphere_slider_spacing).name('Move Up/Down')
+				.setValue(curr_pos_sphere_2)
+        		.onChange(onChangeSpherePos2);
+
+				// obj_folder.open();
+				obj_folder.close();
+				deform_folder.open();
+			}
+
+			function onChangeTorus(this_new_scale) {
+				// Interpolate logarithmically
+				// let scale_invert = 1.0 - this_new_scale;
+				// let this_new_rad = Math.exp(Math.log(min_torus_size) + scale_invert * (Math.log(max_torus_size) - Math.log(min_torus_size)));
+				// let this_new_rad_tube = Math.exp(Math.log(min_torus_size_tube) + scale_invert * (Math.log(max_torus_size_tube) - Math.log(min_torus_size_tube)));
+
+				// Interpolate 1/x
+				let this_new_rad;
+				let this_new_rad_tube;
+
+				if (this_new_scale == 0.0) {
+					this_new_rad = max_torus_size;
+					this_new_rad_tube = max_torus_size_tube;
+				} else {
+					this_new_rad = min_torus_size / this_new_scale;
+					this_new_rad_tube = min_torus_size_tube / this_new_scale;
+
+					if (this_new_rad > max_torus_size) {
+						this_new_rad = max_torus_size;
+					}
+					if (this_new_rad_tube > max_torus_size_tube) {
+						this_new_rad_tube = max_torus_size_tube;
+					}
+				}
+
+				// Actually change the displayed model
+				disposeTorus();
+				initTorus(this_new_rad, this_new_rad_tube);
+
+				// Update position of sphere_group
+				if (switch_bool_moving_dir_2 == true) {
+					onChangeSpherePos2(curr_pos_sphere_2);
+				} else {
+					onChangeSpherePos1(max_pos_sphere_1 - curr_pos_sphere_1); // to not screw up the inversion. The inverted value is stored, so convert back.
+				}
+    		}
+
+			function onChangeSpherePos1(this_new_pos_1) {
+				if (switch_bool_move_sphere == true) {
+					if (curr_pos_sphere_2 != 0.0) {
+						switch_bool_move_sphere = false;
+						gui.folders[1].children[2].setValue(0.0);
+						switch_bool_move_sphere = true;
+					}
+					// Invert position paramter for correct movement direction
+					this_new_pos_1 = max_pos_sphere_1 - this_new_pos_1;
+
+					// Convert the position parameter into the correct range
+					let new_pos_1 = this_new_pos_1 - Math.floor(this_new_pos_1);
+					let pos_1 = new_pos_1;
+
+					if (new_pos_1 > 0.5) {
+						pos_1 = new_pos_1 - 1.0;
+					}
+
+					// Set point after for moving, so correct rotation sphere
+					// can be calculated
+					let pos_1_after;
+					if (this_new_pos_1 > curr_pos_sphere_1) { // moving right
+						switch_bool_move_dir_pos = true;
+						pos_1_after = pos_1 + pos_sphere_slider_spacing; // no issue if out of range, it still works on torus
+					} else if (this_new_pos_1 < curr_pos_sphere_1) { // moving left
+						switch_bool_move_dir_pos = false;
+						pos_1_after = pos_1 - pos_sphere_slider_spacing;
+					} else { // use flag to determine which direction is current, to make this more smooth
+						if (switch_bool_move_dir_pos == true) {
+							pos_1_after = pos_1 + pos_sphere_slider_spacing;
+						} else {
+							pos_1_after = pos_1 - pos_sphere_slider_spacing;
+						}
+					}
+
+					// Update internal data
+					curr_pos_sphere_1 = this_new_pos_1;
+					switch_bool_moving_dir_2 = false;
+
+					let u_delta = Math.PI * patch_size_x / curr_torus_size; // 2pi u 2r = patch_size_x
+					let v_delta = Math.PI * patch_size_y / curr_torus_size_tube; // 2pi v 2r = patch_size_y
+
+					// Calculate new position
+					const this_x = (curr_torus_size + curr_torus_size_tube) * Math.cos(pos_1 * u_delta) - curr_torus_size - curr_torus_size_tube + min_torus_size_tube + min_torus_size;// + sphere_size * Math.cos(pos_1 * u_delta);
+					const this_y = 0.0;
+					const this_z = (curr_torus_size + curr_torus_size_tube) * Math.sin(pos_1 * u_delta);// + sphere_size * Math.sin(pos_1 * u_delta);
+
+					// Actually change the position
+					sphere_group.position.set(this_x, this_y, this_z);
+
+					// Change orientation
+					const this_x_after = (curr_torus_size + curr_torus_size_tube) * Math.cos(pos_1_after * u_delta) - curr_torus_size - curr_torus_size_tube + min_torus_size_tube + min_torus_size;// + sphere_size * Math.cos(pos_1_after * u_delta);
+					const this_y_after = 0.0;
+					const this_z_after = (curr_torus_size + curr_torus_size_tube) * Math.sin(pos_1_after * u_delta);// + sphere_size * Math.sin(pos_1_after * u_delta);
+
+					const this_quat = new THREE.Quaternion();
+					let sphereCurrentAxis = new THREE.Vector3(this_x - this_x_after, this_y - this_y_after, this_z - this_z_after);
+					sphereCurrentAxis.normalize();
+			        this_quat.setFromUnitVectors(stdAxisRight, sphereCurrentAxis);
+			        sphere_group.setRotationFromQuaternion(this_quat);
+				}
+    		}
+
+			function onChangeSpherePos2(this_new_pos_2) {
+				if (switch_bool_move_sphere == true) {
+					if (curr_pos_sphere_1 != 0.0) {
+						switch_bool_move_sphere = false;
+						gui.folders[1].children[1].setValue(0.0);
+						switch_bool_move_sphere = true;
+					}
+					// Convert the position parameter into the correct range
+					let new_pos_2 = this_new_pos_2 - Math.floor(this_new_pos_2);
+					let pos_2 = new_pos_2;
+
+					if (new_pos_2 > 0.5) {
+						pos_2 = new_pos_2 - 1.0;
+					}
+
+					// Set point after for moving, so correct rotation sphere
+					// can be calculated
+					let pos_2_after, do_extra_z_rot;
+					if (this_new_pos_2 > curr_pos_sphere_2) { // moving up
+						switch_bool_move_dir_pos = true;
+						pos_2_after = pos_2 + pos_sphere_slider_spacing; // no issue if out of range, it still works on torus
+						do_extra_z_rot = true;
+					} else if (this_new_pos_2 < curr_pos_sphere_2) { // moving down
+						switch_bool_move_dir_pos = false;
+						pos_2_after = pos_2 - pos_sphere_slider_spacing;
+						do_extra_z_rot = false;
+					} else { // use flag to determine which direction is current, to make this more smooth
+						if (switch_bool_move_dir_pos == true) {
+							pos_2_after = pos_2 + pos_sphere_slider_spacing;
+							do_extra_z_rot = true;
+						} else {
+							pos_2_after = pos_2 - pos_sphere_slider_spacing;
+							do_extra_z_rot = false;
+						}
+					}
+
+					// Edge case
+					if (this_new_pos_2 == max_pos_sphere_2) {
+						do_extra_z_rot = true;
+
+						if (curr_torus_size == max_torus_size) {
+							do_extra_z_rot = false;
+						}
+					}
+
+					// Update internal data
+					curr_pos_sphere_2 = this_new_pos_2;
+					switch_bool_moving_dir_2 = true;
+
+					let u_delta = Math.PI * patch_size_x / curr_torus_size; // 2pi u 2r = patch_size_x
+					let v_delta = Math.PI * patch_size_y / curr_torus_size_tube; // 2pi v 2r = patch_size_y
+
+					// Calculate new position
+					const this_x = (curr_torus_size + curr_torus_size_tube * Math.cos(pos_2 * v_delta)) - curr_torus_size - curr_torus_size_tube + min_torus_size_tube + min_torus_size; //+ sphere_size * Math.cos(pos_2 * v_delta);
+					const this_y = curr_torus_size_tube * Math.sin(pos_2 * v_delta);// + sphere_size * Math.sin(pos_2 * v_delta);
+					const this_z = 0.0;
+
+					// Actually change the position
+					sphere_group.position.set(this_x, this_y, this_z);
+
+					// Change orientation
+					const this_x_after = (curr_torus_size + curr_torus_size_tube * Math.cos(pos_2_after * v_delta)) - curr_torus_size - curr_torus_size_tube + min_torus_size_tube + min_torus_size; //+ sphere_size * Math.cos(pos_2_after * v_delta);
+					const this_y_after = curr_torus_size_tube * Math.sin(pos_2_after * v_delta);// + sphere_size * Math.sin(pos_2_after * v_delta);
+					const this_z_after = 0.0;
+
+					const this_quat = new THREE.Quaternion();
+					let sphereCurrentAxis = new THREE.Vector3(this_x - this_x_after, this_y - this_y_after, this_z - this_z_after);
+					sphereCurrentAxis.normalize();
+			        this_quat.setFromUnitVectors(stdAxisUp, sphereCurrentAxis);
+			        sphere_group.setRotationFromQuaternion(this_quat);
+					sphere_group.rotateX(-Math.PI / 2.0);
+					if (do_extra_z_rot == true) {
+						sphere_group.rotateZ(Math.PI);
+					}
+				}
+    		}
+		</script>
+
+		<!-- <div id="simulationcredits" class="author"><b>Author:</b> Ricardo Waibel, <a href="https://www.thphys.uni-heidelberg.de">ITP</a>, <a href="https://hegl.mathi.uni-heidelberg.de">HEGL</a>.</div> -->
+	</body>
+</html>
