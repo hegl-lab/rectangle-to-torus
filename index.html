@@ -74,8 +74,6 @@
 			let curr_torus = 0.0;
 			let curr_torus_size = 0.0;
 			let curr_torus_size_tube = 0.0;
-			let curr_pos_sphere_1 = 0.0;
-			let curr_pos_sphere_2 = 0.0;
 			let switch_bool_sphere_group = true;
 			let switch_bool_moving_dir_2 = false;
 			let switch_bool_move_sphere = true;
@@ -97,6 +95,8 @@
 			const max_pos_sphere_1 = 4.0;
 			const max_pos_sphere_2 = 4.0;
 			const pos_sphere_slider_spacing = 0.005;
+			let curr_pos_sphere_1 = 0.5 * max_pos_sphere_1;
+			let curr_pos_sphere_2 = 0.5 * max_pos_sphere_2;
 
 			const colour_white = 0xFFFFFF;
 			const colour_yellow = 0xFFFF00;
@@ -156,6 +156,9 @@
 				initGui();
 				initTorus(max_torus_size, max_torus_size_tube);
 				initSphereGroup();
+
+				// Add Key-Input
+				document.addEventListener("keydown", onDocumentKeyDown, false);
 
 				// Define standard orientation axis
 				// Use max torus size, instead of current one, should be roughly the same for the zero point
@@ -361,11 +364,11 @@
 
 			function onChangeSpherePos1(this_new_pos_1) {
 				if (switch_bool_move_sphere == true) {
-					if (curr_pos_sphere_2 != 0.0) {
-						switch_bool_move_sphere = false;
-						gui.folders[1].children[2].setValue(0.0);
-						switch_bool_move_sphere = true;
-					}
+					// if (curr_pos_sphere_2 != 0.0) {
+					// 	switch_bool_move_sphere = false;
+					// 	gui.folders[1].children[2].setValue(0.0);
+					// 	switch_bool_move_sphere = true;
+					// }
 					// Invert position paramter for correct movement direction
 					this_new_pos_1 = max_pos_sphere_1 - this_new_pos_1;
 
@@ -375,6 +378,13 @@
 
 					if (new_pos_1 > 0.5) {
 						pos_1 = new_pos_1 - 1.0;
+					}
+
+					let new_pos_2 = curr_pos_sphere_2 - Math.floor(curr_pos_sphere_2);
+					let pos_2 = new_pos_2;
+
+					if (new_pos_2 > 0.5) {
+						pos_2 = new_pos_2 - 1.0;
 					}
 
 					// Set point after for moving, so correct rotation sphere
@@ -402,17 +412,17 @@
 					let v_delta = Math.PI * patch_size_y / curr_torus_size_tube; // 2pi v 2r = patch_size_y
 
 					// Calculate new position
-					const this_x = (curr_torus_size + curr_torus_size_tube) * Math.cos(pos_1 * u_delta) - curr_torus_size - curr_torus_size_tube + min_torus_size_tube + min_torus_size;// + sphere_size * Math.cos(pos_1 * u_delta);
-					const this_y = 0.0;
-					const this_z = (curr_torus_size + curr_torus_size_tube) * Math.sin(pos_1 * u_delta);// + sphere_size * Math.sin(pos_1 * u_delta);
+					const this_x = (curr_torus_size + curr_torus_size_tube * Math.cos(pos_2 * v_delta)) * Math.cos(pos_1 * u_delta) - curr_torus_size - curr_torus_size_tube + min_torus_size_tube + min_torus_size;
+					const this_y = curr_torus_size_tube * Math.sin(pos_2 * v_delta);
+					const this_z = (curr_torus_size + curr_torus_size_tube * Math.cos(pos_2 * v_delta)) * Math.sin(pos_1 * u_delta);
 
 					// Actually change the position
 					sphere_group.position.set(this_x, this_y, this_z);
 
 					// Change orientation
-					const this_x_after = (curr_torus_size + curr_torus_size_tube) * Math.cos(pos_1_after * u_delta) - curr_torus_size - curr_torus_size_tube + min_torus_size_tube + min_torus_size;// + sphere_size * Math.cos(pos_1_after * u_delta);
-					const this_y_after = 0.0;
-					const this_z_after = (curr_torus_size + curr_torus_size_tube) * Math.sin(pos_1_after * u_delta);// + sphere_size * Math.sin(pos_1_after * u_delta);
+					const this_x_after = (curr_torus_size + curr_torus_size_tube * Math.cos(pos_2 * v_delta)) * Math.cos(pos_1_after * u_delta) - curr_torus_size - curr_torus_size_tube + min_torus_size_tube + min_torus_size;
+					const this_y_after = curr_torus_size_tube * Math.sin(pos_2 * v_delta);
+					const this_z_after = (curr_torus_size + curr_torus_size_tube * Math.cos(pos_2 * v_delta)) * Math.sin(pos_1_after * u_delta);
 
 					const this_quat = new THREE.Quaternion();
 					let sphereCurrentAxis = new THREE.Vector3(this_x - this_x_after, this_y - this_y_after, this_z - this_z_after);
@@ -424,17 +434,24 @@
 
 			function onChangeSpherePos2(this_new_pos_2) {
 				if (switch_bool_move_sphere == true) {
-					if (curr_pos_sphere_1 != 0.0) {
-						switch_bool_move_sphere = false;
-						gui.folders[1].children[1].setValue(0.0);
-						switch_bool_move_sphere = true;
-					}
+					// if (curr_pos_sphere_1 != 0.0) {
+					// 	switch_bool_move_sphere = false;
+					// 	gui.folders[1].children[1].setValue(0.0);
+					// 	switch_bool_move_sphere = true;
+					// }
 					// Convert the position parameter into the correct range
 					let new_pos_2 = this_new_pos_2 - Math.floor(this_new_pos_2);
 					let pos_2 = new_pos_2;
 
 					if (new_pos_2 > 0.5) {
 						pos_2 = new_pos_2 - 1.0;
+					}
+
+					let new_pos_1 = curr_pos_sphere_1 - Math.floor(curr_pos_sphere_1);
+					let pos_1 = new_pos_1;
+
+					if (new_pos_1 > 0.5) {
+						pos_1 = new_pos_1 - 1.0;
 					}
 
 					// Set point after for moving, so correct rotation sphere
@@ -475,17 +492,17 @@
 					let v_delta = Math.PI * patch_size_y / curr_torus_size_tube; // 2pi v 2r = patch_size_y
 
 					// Calculate new position
-					const this_x = (curr_torus_size + curr_torus_size_tube * Math.cos(pos_2 * v_delta)) - curr_torus_size - curr_torus_size_tube + min_torus_size_tube + min_torus_size; //+ sphere_size * Math.cos(pos_2 * v_delta);
-					const this_y = curr_torus_size_tube * Math.sin(pos_2 * v_delta);// + sphere_size * Math.sin(pos_2 * v_delta);
-					const this_z = 0.0;
+					const this_x = (curr_torus_size + curr_torus_size_tube * Math.cos(pos_2 * v_delta)) * Math.cos(pos_1 * u_delta) - curr_torus_size - curr_torus_size_tube + min_torus_size_tube + min_torus_size;
+					const this_y = curr_torus_size_tube * Math.sin(pos_2 * v_delta);
+					const this_z = (curr_torus_size + curr_torus_size_tube * Math.cos(pos_2 * v_delta)) * Math.sin(pos_1 * u_delta);
 
 					// Actually change the position
 					sphere_group.position.set(this_x, this_y, this_z);
 
 					// Change orientation
-					const this_x_after = (curr_torus_size + curr_torus_size_tube * Math.cos(pos_2_after * v_delta)) - curr_torus_size - curr_torus_size_tube + min_torus_size_tube + min_torus_size; //+ sphere_size * Math.cos(pos_2_after * v_delta);
-					const this_y_after = curr_torus_size_tube * Math.sin(pos_2_after * v_delta);// + sphere_size * Math.sin(pos_2_after * v_delta);
-					const this_z_after = 0.0;
+					const this_x_after = (curr_torus_size + curr_torus_size_tube * Math.cos(pos_2_after * v_delta)) * Math.cos(pos_1 * u_delta) - curr_torus_size - curr_torus_size_tube + min_torus_size_tube + min_torus_size;
+					const this_y_after = curr_torus_size_tube * Math.sin(pos_2_after * v_delta);
+					const this_z_after = (curr_torus_size + curr_torus_size_tube * Math.cos(pos_2_after * v_delta)) * Math.sin(pos_1 * u_delta);
 
 					const this_quat = new THREE.Quaternion();
 					let sphereCurrentAxis = new THREE.Vector3(this_x - this_x_after, this_y - this_y_after, this_z - this_z_after);
@@ -498,6 +515,46 @@
 					}
 				}
     		}
+
+			function onDocumentKeyDown(event) {
+				var keyCode = event.which;
+				const step_mult = 6;
+				if (keyCode == 37) { // left arrow key
+					let this_new_slider_val1 = max_pos_sphere_1 - curr_pos_sphere_1; // Invert position paramter 
+					this_new_slider_val1 = this_new_slider_val1 - step_mult * pos_sphere_slider_spacing;
+					if (this_new_slider_val1 < 0) {
+						this_new_slider_val1 = 0.0;
+					}
+					onChangeSpherePos1(this_new_slider_val1);
+					switch_bool_move_sphere = false;
+					gui.folders[1].children[1].setValue(this_new_slider_val1);
+					switch_bool_move_sphere = true;
+				} else if (keyCode == 38) { // up arrow key
+					let this_new_slider_val2 = curr_pos_sphere_2;
+					this_new_slider_val2 = this_new_slider_val2 + step_mult * pos_sphere_slider_spacing;
+					if (this_new_slider_val2 > max_pos_sphere_2) {
+						this_new_slider_val2 = max_pos_sphere_2;
+					}
+					gui.folders[1].children[2].setValue(this_new_slider_val2);
+				} else if (keyCode == 39) { // right arrow key
+					let this_new_slider_val1 = max_pos_sphere_1 - curr_pos_sphere_1; // Invert position paramter
+					this_new_slider_val1 = this_new_slider_val1 + step_mult * pos_sphere_slider_spacing;
+					if (this_new_slider_val1 > max_pos_sphere_1) {
+						this_new_slider_val1 = max_pos_sphere_1;
+					}
+					onChangeSpherePos1(this_new_slider_val1);
+					switch_bool_move_sphere = false;
+					gui.folders[1].children[1].setValue(this_new_slider_val1);
+					switch_bool_move_sphere = true;
+				} else if (keyCode == 40) { // down arrow key
+					let this_new_slider_val2 = curr_pos_sphere_2;
+					this_new_slider_val2 = this_new_slider_val2 - step_mult * pos_sphere_slider_spacing;
+					if (this_new_slider_val2 < 0) {
+						this_new_slider_val2 = 0.0;
+					}
+					gui.folders[1].children[2].setValue(this_new_slider_val2);
+				}
+			}
 		</script>
 
 		<!-- <div id="simulationcredits" class="author"><b>Author:</b> Ricardo Waibel, <a href="https://www.thphys.uni-heidelberg.de">ITP</a>, <a href="https://hegl.mathi.uni-heidelberg.de">HEGL</a>.</div> -->
